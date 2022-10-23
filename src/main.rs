@@ -12,8 +12,7 @@ const MAX_MESSAGE_LENGTH: usize = 10000;
 
 #[tokio::main]
 async fn main() {
-    let port = 5555;
-    let listener = TcpListener::bind(format!("127.0.0.1:{port}")).await.unwrap();
+    let listener = TcpListener::bind("0.0.0.0:5555").await.unwrap();
 
     let db: Db = Arc::new(Mutex::new(HashMap::new()));
 
@@ -145,7 +144,7 @@ async fn send_done_response(data: &mut TaskData) -> Result<(), RequestError> {
 
 async fn send_found_response(data: &mut TaskData, value: String) -> Result<(), RequestError> {
     if value == "not_found" {
-        if data.socket.write("NOTFOUND".as_bytes()).await.is_err() {
+        if data.socket.write("NOTFOUND$".as_bytes()).await.is_err() {
             return Err(RequestError)
         }
     }
