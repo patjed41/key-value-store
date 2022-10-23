@@ -31,6 +31,7 @@ impl TaskData {
 // Error returned when something goes wrong during a task's work.
 // We do not care what really happened because in every case we just
 // finish the task and close the connection with the client.
+#[derive(Debug)]
 pub struct TaskError;
 
 pub async fn handle_connection(mut data: TaskData) {
