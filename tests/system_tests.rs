@@ -119,6 +119,30 @@ async fn store_request_overrides_value() {
 #[ignore]
 #[tokio::test]
 #[ntest::timeout(1000)]
+async fn messages_containing_many_requests_work() {
+    let mut socket = TcpStream::connect("127.0.0.1:5555").await.unwrap();
+
+    let mut buf = vec![0; BUF_LEN];
+    let mut read_num;
+
+    socket.write("STORE$mra$mrb$STORE$mrc$mrd$STORE$mre$mrf$".as_bytes()).await.unwrap();
+    for _ in 0..3 {
+        read_num = socket.read(&mut buf).await.unwrap();
+        assert_eq!("DONE$".as_bytes(), &buf[0..read_num]);
+    }
+
+    socket.write("LOAD$mra$LOAD$mrc$LOAD$mre$".as_bytes()).await.unwrap();
+    read_num = socket.read(&mut buf).await.unwrap();
+    assert_eq!("FOUND$mrb$".as_bytes(), &buf[0..read_num]);
+    read_num = socket.read(&mut buf).await.unwrap();
+    assert_eq!("FOUND$mrd$".as_bytes(), &buf[0..read_num]);
+    read_num = socket.read(&mut buf).await.unwrap();
+    assert_eq!("FOUND$mrf$".as_bytes(), &buf[0..read_num]);
+}
+
+#[ignore]
+#[tokio::test]
+#[ntest::timeout(1000)]
 async fn sending_incorrect_message_with_3_dollars_closes_connection() {
     let mut socket = TcpStream::connect("127.0.0.1:5555").await.unwrap();
 
