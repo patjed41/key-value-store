@@ -7,11 +7,6 @@ use std::sync::{Arc, Mutex};
 
 mod request_parsing;
 
-// Maximum size of request that is allowed by server. If server receives a longer
-// message without a single prefix that is a correct request, it closes the
-// connection with the sender.
-const MAX_MESSAGE_LENGTH: usize = 10000;
-
 // Type of the database of the key-value pairs.
 pub type Db = Arc<Mutex<HashMap<String, String>>>;
 
@@ -34,42 +29,52 @@ impl TaskData {
 #[derive(Debug)]
 pub struct TaskError;
 
+// Handles receiving requests from a single client.
+// When execution of the function ends, connection also ends.
 pub async fn handle_connection(mut data: TaskData) {
-    let mut buf = vec![0; MAX_MESSAGE_LENGTH];
-    let mut request = String::new(); // Request fragment read so far.
+    static BUF_SIZE: usize = 1024;
+    let mut buf = vec![0; BUF_SIZE];
+    let mut message = String::new(); // Fragment of the message read so far.
 
     loop {
-        if let Ok(read_num) = data.socket.read(&mut buf).await {
-            buf[0..read_num].iter().for_each(|byte| request.push(*byte as char));
+        match data.socket.read(&mut buf).await {
+            Ok(0) | Err(_) => return,
+            Ok(read_num) => {
+                buf[0..read_num].iter().for_each(|byte| message.push(*byte as char));
 
-            if process_request(&mut request, &mut data).await.is_err() {
-                return
+                if process_message(&mut message, &mut data).await.is_err() {
+                    return
+                }
             }
-        } else { // The case where client closed the connection or socket.read failed.
-            return
         }
     }
 }
 
-async fn process_request(request: &mut String, data: &mut TaskData) -> Result<(), TaskError> {
-    if request_parsing::is_store_request(request)? {
-        process_store_request(request, data).await?;
+// Processes message until it has a prefix being a STORE or LOAD request.
+// Returns TaskError, if message is for sure incorrect.
+async fn process_message(message: &mut String, data: &mut TaskData) -> Result<(), TaskError> {
+    while request_parsing::is_store_request(message)?
+            || request_parsing::is_load_request(message)? {
+        if request_parsing::is_store_request(message)? {
+            process_store_request(message, data).await?;
+        } else {
+            process_load_request(message, data).await?;
+        }
     }
     
-    if request_parsing::is_load_request(request)? {
-        process_load_request(request, data).await?;
-    }
-
-    if request.len() > MAX_MESSAGE_LENGTH {
+    // Request is for sure incorrect.
+    if message.matches("$").count() > 2 {
         return Err(TaskError)
     }
 
     Ok(())
 }
 
-async fn process_store_request(request: &mut String, data: &mut TaskData) -> Result<(), TaskError> {
-    let (key, value, rest) = request_parsing::split_store_request(request);
-    *request = rest;
+// Processes single prefix of message that is a STORE request and
+// deletes it from the message.
+async fn process_store_request(message: &mut String, data: &mut TaskData) -> Result<(), TaskError> {
+    let (key, value, rest) = request_parsing::split_store_request(message);
+    *message = rest;
 
     match data.db.lock() {
         Ok(mut db) => {
@@ -83,9 +88,11 @@ async fn process_store_request(request: &mut String, data: &mut TaskData) -> Res
     Ok(())
 }
 
-async fn process_load_request(request: &mut String, data: &mut TaskData) -> Result<(), TaskError> {
-    let (key, rest) = request_parsing::split_load_request(request);
-    *request = rest;
+// Processes single prefix of message that is a LOAD request and
+// deletes it from the message.
+async fn process_load_request(message: &mut String, data: &mut TaskData) -> Result<(), TaskError> {
+    let (key, rest) = request_parsing::split_load_request(message);
+    *message = rest;
 
     let mut value = String::from("not_found");
     match data.db.lock() {

@@ -119,11 +119,14 @@ async fn store_request_overrides_value() {
 #[ignore]
 #[tokio::test]
 #[ntest::timeout(1000)]
-async fn sending_too_long_request_closes_connection() {
+async fn sending_incorrect_message_with_3_dollars_closes_connection() {
     let mut socket = TcpStream::connect("127.0.0.1:5555").await.unwrap();
 
     let mut long_request = String::new();
-    for _ in 0..1000 {
+    for i in 1..1000 {
+        if i % 300 == 0 {
+            long_request.push('$')
+        }
         long_request.push('a');
     }
 
