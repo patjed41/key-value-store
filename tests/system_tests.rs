@@ -54,7 +54,8 @@ async fn correct_store_request_sent_partially_works() {
 #[ntest::timeout(1000)]
 async fn correct_load_request_works() {
     let correct_load_requests = vec![
-        "LOAD$$"
+        "LOAD$$", "LOAD$k$", "LOAD$key$", "LOAD$qwertyuiopasdfghjklzxcvbnm$",
+        "LOAD$a$a"
     ];
 
     let mut socket = TcpStream::connect("127.0.0.1:5555").await.unwrap();
