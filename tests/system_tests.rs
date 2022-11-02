@@ -123,22 +123,46 @@ async fn store_request_overrides_value() {
 async fn messages_containing_many_requests_work() {
     let mut socket = TcpStream::connect("127.0.0.1:5555").await.unwrap();
 
-    let mut buf = vec![0; BUF_LEN];
     let mut read_num;
 
+    let mut buf1 = vec![0; 5];
     socket.write("STORE$mra$mrb$STORE$mrc$mrd$STORE$mre$mrf$".as_bytes()).await.unwrap();
     for _ in 0..3 {
-        read_num = socket.read(&mut buf).await.unwrap();
-        assert_eq!("DONE$".as_bytes(), &buf[0..read_num]);
+        read_num = socket.read_exact(&mut buf1).await.unwrap();
+        assert_eq!("DONE$".as_bytes(), &buf1[0..read_num]);
     }
 
+    let mut buf2 = vec![0; 10];
     socket.write("LOAD$mra$LOAD$mrc$LOAD$mre$".as_bytes()).await.unwrap();
-    read_num = socket.read(&mut buf).await.unwrap();
-    assert_eq!("FOUND$mrb$".as_bytes(), &buf[0..read_num]);
-    read_num = socket.read(&mut buf).await.unwrap();
-    assert_eq!("FOUND$mrd$".as_bytes(), &buf[0..read_num]);
-    read_num = socket.read(&mut buf).await.unwrap();
-    assert_eq!("FOUND$mrf$".as_bytes(), &buf[0..read_num]);
+    read_num = socket.read_exact(&mut buf2).await.unwrap();
+    assert_eq!("FOUND$mrb$".as_bytes(), &buf2[0..read_num]);
+    read_num = socket.read_exact(&mut buf2).await.unwrap();
+    assert_eq!("FOUND$mrd$".as_bytes(), &buf2[0..read_num]);
+    read_num = socket.read_exact(&mut buf2).await.unwrap();
+    assert_eq!("FOUND$mrf$".as_bytes(), &buf2[0..read_num]);
+}
+
+#[ignore]
+#[tokio::test]
+#[ntest::timeout(1000)]
+async fn messages_containing_many_mixed_requests_work() {
+    let mut socket = TcpStream::connect("127.0.0.1:5555").await.unwrap();
+
+    let mut buf1 = vec![0; 5];
+    let mut buf2 = vec![0; 9];
+    let mut read_num;
+
+    socket.write("STORE$qa$qb$LOAD$qa$STORE".as_bytes()).await.unwrap();
+    read_num = socket.read(&mut buf1).await.unwrap();
+    assert_eq!("DONE$".as_bytes(), &buf1[0..read_num]);
+    read_num = socket.read(&mut buf2).await.unwrap();
+    assert_eq!("FOUND$qb$".as_bytes(), &buf2[0..read_num]);
+
+    socket.write("$qc$qd$LOAD$qc$".as_bytes()).await.unwrap();
+    read_num = socket.read(&mut buf1).await.unwrap();
+    assert_eq!("DONE$".as_bytes(), &buf1[0..read_num]);
+    read_num = socket.read(&mut buf2).await.unwrap();
+    assert_eq!("FOUND$qd$".as_bytes(), &buf2[0..read_num]);
 }
 
 #[ignore]
