@@ -14,7 +14,7 @@ async fn correct_store_request_works() {
     let correct_store_requests = vec![
         "STORE$$$", "STORE$k$$", "STORE$key$$", "STORE$$v$", "STORE$$value$",
         "STORE$k$v$", "STORE$key$value$", "STORE$qwertyuiopasdfghjklzxcvbnm$value$",
-        "STORE$key$qwertyuiopasdfghjklzxcvbnm$","STORE$$$a"
+        "STORE$key$qwertyuiopasdfghjklzxcvbnm$","STORE$$$S"
     ];
 
     let mut socket = TcpStream::connect("127.0.0.1:5555").await.unwrap();
@@ -55,7 +55,7 @@ async fn correct_store_request_sent_partially_works() {
 async fn correct_load_request_works() {
     let correct_load_requests = vec![
         "LOAD$$", "LOAD$k$", "LOAD$key$", "LOAD$qwertyuiopasdfghjklzxcvbnm$",
-        "LOAD$a$a"
+        "LOAD$a$L"
     ];
 
     let mut socket = TcpStream::connect("127.0.0.1:5555").await.unwrap();
