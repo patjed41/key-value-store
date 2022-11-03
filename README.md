@@ -15,6 +15,11 @@ This is an implementation of a simple key-value store server written in Rust wit
 1. Clone this repository.
 2. Go to its directory and execute `cargo run`.
 
+## 2 solutions
+
+1. Solution with keeping data in the server's memory is on the branch `master`.
+2. Solution with keeping data on the disk is on the branch `io`.
+
 ## Testing
 
 There are two kinds of tests:
