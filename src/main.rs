@@ -1,24 +1,26 @@
 // author - Patryk Jędrzejczak
 
 use tokio::net::TcpListener;
-use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
+use tokio::sync::mpsc;
 
-use key_value_store::{Db, TaskData};
+use key_value_store::{TaskData};
 
 #[tokio::main]
 async fn main() {
     let listener = TcpListener::bind("0.0.0.0:5555").await.unwrap();
 
-    let db: Db = Arc::new(Mutex::new(HashMap::new()));
+    let (request_sender, request_receiver) = mpsc::channel(32);
+
+    tokio::spawn(async move {
+        key_value_store::run_request_manager(request_receiver).await;
+    });
 
     loop {
         let (socket, _) = listener.accept().await.unwrap();
 
-        let db = db.clone();
-
+        let sender_copy = request_sender.clone();
         tokio::spawn(async move {
-            key_value_store::handle_connection(TaskData::new(socket, db)).await;
+            key_value_store::handle_connection(TaskData::new(socket, sender_copy)).await;
         });
     }
 }
