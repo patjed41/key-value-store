@@ -142,8 +142,9 @@ async fn process_message(message: &mut String, data: &mut TaskData) -> Result<()
         }
     }
     
-    // Request is for sure incorrect.
-    if message.matches("$").count() > 2 {
+
+    if !request_parsing::could_become_store_request(message)?
+            && !request_parsing::could_become_load_request(message)? {
         return Err(TaskError)
     }
 

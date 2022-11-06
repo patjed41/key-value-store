@@ -4,22 +4,44 @@ use regex::Regex;
 
 use super::TaskError;
 
-// Returns true if there exists a prefix of a message parameter
-// that is a correct STORE request.
-pub fn is_store_request(message: &str) -> Result<bool, TaskError> {
-    match Regex::new(r"^STORE\$[a-z]*\$[a-z]*\$") {
-        Ok(store_regex) => Ok(store_regex.is_match(message)),
+fn match_regex(message: &str, pattern: &str) -> Result<bool, TaskError> {
+    match Regex::new(pattern) {
+        Ok(regex) => Ok(regex.is_match(message)),
         Err(_) => Err(TaskError)
     }
 }
 
 // Returns true if there exists a prefix of a message parameter
+// that is a correct STORE request.
+pub fn is_store_request(message: &str) -> Result<bool, TaskError> {
+    match_regex(message, r"^STORE\$[a-z]*\$[a-z]*\$")
+}
+
+// Returns true if there exists a prefix of a message parameter
 // that is a correct LOAD request.
 pub fn is_load_request(message: &str) -> Result<bool, TaskError> {
-    match Regex::new(r"^LOAD\$[a-z]*\$") {
-        Ok(store_regex) => Ok(store_regex.is_match(message)),
-        Err(_) => Err(TaskError)
+    match_regex(message, r"^LOAD\$[a-z]*\$")
+}
+
+// Returns true if message could become a correct STORE request.
+pub fn could_become_store_request(message: &str) -> Result<bool, TaskError> {
+    static STORE: &str = "STORE$";
+    if message.len() <= STORE.len() {
+        return Ok(message == &STORE[..message.len()]);
     }
+
+    Ok(match_regex(message, r"^STORE\$[a-z]*$")?
+        || match_regex(message, r"^STORE\$[a-z]*\$[a-z]*$")?)
+}
+
+// Returns true if message could become a correct LOAD request.
+pub fn could_become_load_request(message: &str) -> Result<bool, TaskError> {
+    static LOAD: &str = "LOAD$";
+    if message.len() <= LOAD.len() {
+        return Ok(message == &LOAD[..message.len()]);
+    }
+
+    match_regex(message,  r"^LOAD\$[a-z]*$")
 }
 
 // Splits a message with a prefix that is a correct STORE request
@@ -113,6 +135,56 @@ mod tests {
 
         for request in incorrect_load_requests {
             assert!(!is_load_request(request).unwrap());
+        }
+    }
+
+    #[test]
+    fn could_become_store_request_returns_true_when_should() {
+        let correct_store_prefixes = vec![
+            "", "S", "ST", "STO", "STOR", "STORE", "STORE$",
+            "STORE$key", "STORE$qwertyuiopasdfghjklzxcvbnm",
+            "STORE$key$", "STORE$key$value", "STORE$$",
+            "STORE$key$qwertyuiopasdfghjklzxcvbnm"
+        ];
+
+        for request in correct_store_prefixes {
+            assert!(could_become_store_request(request).unwrap());
+        }
+    }
+
+    #[test]
+    fn could_become_store_request_returns_false_when_should() {
+        let incorrect_store_prefixes = vec![
+            "T", "a", "STOE$", "STOREa", "STORE$1", "STORE$*", "STORE$a$1",
+            "STORE$$$", "STORE$$$a", "STORE$key$value$", "STRE$key$value"
+        ];
+
+        for request in incorrect_store_prefixes {
+            assert!(!could_become_store_request(request).unwrap());
+        }
+    }
+
+    #[test]
+    fn could_become_load_request_returns_true_when_should() {
+        let correct_load_prefixes = vec![
+            "", "L", "LO", "LOA", "LOAD", "LOAD$", "LOAD$a",
+            "LOAD$key", "LOAD$qwertyuiopasdfghjklzxcvbnm"
+        ];
+
+        for request in correct_load_prefixes {
+            assert!(could_become_load_request(request).unwrap());
+        }
+    }
+
+    #[test]
+    fn could_become_load_request_returns_false_when_should() {
+        let incorrect_load_prefixes = vec![
+            "O", "a", "LOD$", "LOADa", "LOAD$1", "LOAD$*", "LOAD$$",
+            "LOAD$$a", "LAD$key"
+        ];
+
+        for request in incorrect_load_prefixes {
+            assert!(!could_become_load_request(request).unwrap());
         }
     }
 

@@ -175,19 +175,13 @@ async fn messages_containing_many_mixed_requests_work() {
 #[ignore]
 #[tokio::test]
 #[ntest::timeout(1000)]
-async fn sending_incorrect_message_with_3_dollars_closes_connection() {
+async fn sending_incorrect_message_closes_connection() {
     let mut socket = TcpStream::connect("127.0.0.1:5555").await.unwrap();
 
-    let mut long_request = String::new();
-    for i in 1..1000 {
-        if i % 300 == 0 {
-            long_request.push('$')
-        }
-        long_request.push('a');
-    }
+    socket.write("STORE$1$value$".as_bytes()).await.unwrap();
 
     loop {
-        match socket.write(long_request.as_bytes()).await {
+        match socket.write("LOAD$key$".as_bytes()).await {
             Ok(_) => continue,
             Err(_) => break
         };
