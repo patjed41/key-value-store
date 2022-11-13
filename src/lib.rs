@@ -25,18 +25,6 @@ impl TaskData {
     }
 }
 
-impl StoreRequest {
-    fn new(key: String, value: String) -> Self {
-        StoreRequest { key, value }
-    }
-}
-
-impl LoadRequest {
-    fn new(key: String) -> Self {
-        LoadRequest { key }
-    }
-}
-
 pub enum Request {
     Store(StoreRequest),
     Load(LoadRequest)
@@ -49,6 +37,18 @@ pub struct StoreRequest {
 
 pub struct LoadRequest {
     key: String
+}
+
+impl StoreRequest {
+    fn new(key: String, value: String) -> Self {
+        StoreRequest { key, value }
+    }
+}
+
+impl LoadRequest {
+    fn new(key: String) -> Self {
+        LoadRequest { key }
+    }
 }
 
 // Command sent to request manager after reading a request from the client.
