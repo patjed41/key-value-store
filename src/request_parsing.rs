@@ -2,7 +2,7 @@
 
 use regex::Regex;
 
-use super::TaskError;
+use super::{TaskError, Request, StoreRequest, LoadRequest};
 
 fn match_regex(message: &str, pattern: &str) -> Result<bool, TaskError> {
     match Regex::new(pattern) {
@@ -13,18 +13,18 @@ fn match_regex(message: &str, pattern: &str) -> Result<bool, TaskError> {
 
 // Returns true if there exists a prefix of a message parameter
 // that is a correct STORE request.
-pub fn is_store_request(message: &str) -> Result<bool, TaskError> {
+fn is_store_request(message: &str) -> Result<bool, TaskError> {
     match_regex(message, r"^STORE\$[a-z]*\$[a-z]*\$")
 }
 
 // Returns true if there exists a prefix of a message parameter
 // that is a correct LOAD request.
-pub fn is_load_request(message: &str) -> Result<bool, TaskError> {
+fn is_load_request(message: &str) -> Result<bool, TaskError> {
     match_regex(message, r"^LOAD\$[a-z]*\$")
 }
 
 // Returns true if message could become a correct STORE request.
-pub fn could_become_store_request(message: &str) -> Result<bool, TaskError> {
+fn could_become_store_request(message: &str) -> Result<bool, TaskError> {
     static STORE: &str = "STORE$";
     if message.len() <= STORE.len() {
         return Ok(message == &STORE[..message.len()]);
@@ -35,7 +35,7 @@ pub fn could_become_store_request(message: &str) -> Result<bool, TaskError> {
 }
 
 // Returns true if message could become a correct LOAD request.
-pub fn could_become_load_request(message: &str) -> Result<bool, TaskError> {
+fn could_become_load_request(message: &str) -> Result<bool, TaskError> {
     static LOAD: &str = "LOAD$";
     if message.len() <= LOAD.len() {
         return Ok(message == &LOAD[..message.len()]);
@@ -46,7 +46,7 @@ pub fn could_become_load_request(message: &str) -> Result<bool, TaskError> {
 
 // Splits a message with a prefix that is a correct STORE request
 // from STORE$key$value$rest to (key, value, rest).
-pub fn split_store_request(message: &str) -> (String, String, String) {
+fn split_store_request(message: &str) -> (String, String, String) {
     let dollars: Vec<usize> = message.match_indices('$').map(|(pos, _)| pos).collect();
     let key = message[dollars[0] + 1..dollars[1]].to_string();
     let value = message[dollars[1] + 1..dollars[2]].to_string();
@@ -56,11 +56,31 @@ pub fn split_store_request(message: &str) -> (String, String, String) {
 
 // Splits a message with a prefix that is a correct LOAD request
 // from LOAD$key$rest to (key, rest).
-pub fn split_load_request(message: &str) -> (String, String) {
+fn split_load_request(message: &str) -> (String, String) {
     let dollars: Vec<usize> = message.match_indices('$').map(|(pos, _)| pos).collect();
     let key = message[dollars[0] + 1..dollars[1]].to_string();
     let rest = message[dollars[1] + 1..].to_string();
     (key, rest)
+}
+
+// If message contains a prefix that is a correct request, returns
+// Some(request). If message is incorrect, returns TaskError.
+// Otherwise, returns None. Removes request from message.
+pub fn try_parse_request(message: &mut String) -> Result<Option<Request>, TaskError> {
+    if is_store_request(message)? {
+        let (key, value, rest) = split_store_request(message);
+        *message = rest;
+        return Ok(Some(Request::Store(StoreRequest::new(key, value))));
+    } else if is_load_request(message)? {
+        let (key, rest) = split_load_request(message);
+        *message = rest;
+        return Ok(Some(Request::Load(LoadRequest::new(key))));
+    } else if could_become_store_request(message)?
+        || could_become_load_request(message)? {
+        return Ok(None);
+    } else {
+        return Err(TaskError);
+    }
 }
 
 #[cfg(test)]

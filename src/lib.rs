@@ -10,6 +10,7 @@ mod request_parsing;
 type RequestSender = mpsc::Sender<RequestCommand>;
 type RequestReceiver = mpsc::Receiver<RequestCommand>;
 type RequestResponder<T> = oneshot::Sender<Result<T, TaskError>>;
+use request_parsing::{try_parse_request};
 
 // Struct keeping data of a single task. Its only purpose is
 // simplifying definitions of some functions.
@@ -24,27 +25,52 @@ impl TaskData {
     }
 }
 
+impl StoreRequest {
+    fn new(key: String, value: String) -> Self {
+        StoreRequest { key, value }
+    }
+}
+
+impl LoadRequest {
+    fn new(key: String) -> Self {
+        LoadRequest { key }
+    }
+}
+
+pub enum Request {
+    Store(StoreRequest),
+    Load(LoadRequest)
+}
+
+pub struct StoreRequest {
+    key: String,
+    value: String
+}
+
+pub struct LoadRequest {
+    key: String
+}
+
 // Command sent to request manager after reading a request from the client.
 // Request manager answers using responder attribute.
 pub enum RequestCommand {
     Store {
-        key: String,
-        value: String,
+        request: StoreRequest,
         responder: RequestResponder<()>
     },
     Load {
-        key: String,
+        request: LoadRequest,
         responder: RequestResponder<Option<String>>
     }
 }
 
 impl RequestCommand {
-    fn new_store(key: String, value: String, responder: RequestResponder<()>) -> Self {
-        RequestCommand::Store { key, value, responder }
+    fn new_store(request: StoreRequest, responder: RequestResponder<()>) -> Self {
+        RequestCommand::Store { request, responder }
     }
 
-    fn new_load(key: String, responder: RequestResponder<Option<String>>) -> Self {
-        RequestCommand::Load { key, responder }
+    fn new_load(request: LoadRequest, responder: RequestResponder<Option<String>>) -> Self {
+        RequestCommand::Load { request, responder }
     }
 }
 
@@ -66,11 +92,11 @@ pub async fn run_request_manager(mut request_receiver: RequestReceiver) {
 
     while let Some(request_command) = request_receiver.recv().await {
         match request_command {
-            RequestCommand::Store { key, value, responder } => {
-                handle_store(format!("{}/key-{}", PATH_TO_DB, key), value, responder).await;
+            RequestCommand::Store { request, responder } => {
+                handle_store(format!("{}/key-{}", PATH_TO_DB, request.key), request.value, responder).await;
             },
-            RequestCommand::Load { key, responder } => {
-                handle_load(format!("{}/key-{}", PATH_TO_DB, key), responder).await;
+            RequestCommand::Load { request, responder } => {
+                handle_load(format!("{}/key-{}", PATH_TO_DB, request.key), responder).await;
             }
         }
     }
@@ -133,32 +159,25 @@ pub async fn handle_connection(mut data: TaskData) {
 // Processes message until it has a prefix being a STORE or LOAD request.
 // Returns TaskError, if message is for sure incorrect.
 async fn process_message(message: &mut String, data: &mut TaskData) -> Result<(), TaskError> {
-    while request_parsing::is_store_request(message)?
-            || request_parsing::is_load_request(message)? {
-        if request_parsing::is_store_request(message)? {
-            process_store_request(message, data).await?;
-        } else {
-            process_load_request(message, data).await?;
+    loop {
+        match try_parse_request(message) {
+            Err(_) => return Err(TaskError),
+            Ok(None) => return Ok(()),
+            Ok(Some(request)) => process_request(request, data).await?
         }
     }
-    
-
-    if !request_parsing::could_become_store_request(message)?
-            && !request_parsing::could_become_load_request(message)? {
-        return Err(TaskError)
-    }
-
-    Ok(())
 }
 
-// Processes single prefix of message that is a STORE request and
-// deletes it from the message.
-async fn process_store_request(message: &mut String, data: &mut TaskData) -> Result<(), TaskError> {
-    let (key, value, rest) = request_parsing::split_store_request(message);
-    *message = rest;
+async fn process_request(request: Request, data: &mut TaskData) -> Result<(), TaskError> {
+    match request {
+        Request::Store(request) => process_store_request(request, data).await,
+        Request::Load(request) => process_load_request(request, data).await
+    }
+}
 
+async fn process_store_request(request: StoreRequest, data: &mut TaskData) -> Result<(), TaskError> {
     let (response_sender, response_receiver) = oneshot::channel();
-    let request_command = RequestCommand::new_store(key, value, response_sender);
+    let request_command = RequestCommand::new_store(request, response_sender);
     if data.request_sender.send(request_command).await.is_err() {
         return Err(TaskError)
     }
@@ -171,12 +190,9 @@ async fn process_store_request(message: &mut String, data: &mut TaskData) -> Res
 
 // Processes single prefix of message that is a LOAD request and
 // deletes it from the message.
-async fn process_load_request(message: &mut String, data: &mut TaskData) -> Result<(), TaskError> {
-    let (key, rest) = request_parsing::split_load_request(message);
-    *message = rest;
-
+async fn process_load_request(request: LoadRequest, data: &mut TaskData) -> Result<(), TaskError> {
     let (response_sender, response_receiver) = oneshot::channel();
-    let request_command = RequestCommand::new_load(key, response_sender);
+    let request_command = RequestCommand::new_load(request, response_sender);
     if data.request_sender.send(request_command).await.is_err() {
         return Err(TaskError)
     }
