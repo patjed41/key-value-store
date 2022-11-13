@@ -7,6 +7,8 @@ use std::sync::{Arc, Mutex};
 
 mod request_parsing;
 
+use request_parsing::{try_parse_request};
+
 // Type of the database of the key-value pairs.
 pub type Db = Arc<Mutex<HashMap<String, String>>>;
 
@@ -21,6 +23,32 @@ impl TaskData {
     pub fn new(socket: TcpStream, db: Db) -> Self {
         TaskData { socket, db }
     }
+}
+
+impl StoreRequest {
+    fn new(key: String, value: String) -> Self {
+        StoreRequest { key, value }
+    }
+}
+
+impl LoadRequest {
+    fn new(key: String) -> Self {
+        LoadRequest { key }
+    }
+}
+
+pub enum Request {
+    Store(StoreRequest),
+    Load(LoadRequest)
+}
+
+pub struct StoreRequest {
+    key: String,
+    value: String
+}
+
+pub struct LoadRequest {
+    key: String
 }
 
 // Error returned when something goes wrong during a task's work.
@@ -53,65 +81,46 @@ pub async fn handle_connection(mut data: TaskData) {
 // Processes message until it has a prefix being a STORE or LOAD request.
 // Returns TaskError, if message is for sure incorrect.
 async fn process_message(message: &mut String, data: &mut TaskData) -> Result<(), TaskError> {
-    while request_parsing::is_store_request(message)?
-            || request_parsing::is_load_request(message)? {
-        if request_parsing::is_store_request(message)? {
-            process_store_request(message, data).await?;
-        } else {
-            process_load_request(message, data).await?;
+    loop {
+        match try_parse_request(message) {
+            Err(_) => return Err(TaskError),
+            Ok(None) => return Ok(()),
+            Ok(Some(request)) => process_request(request, data).await?
         }
     }
-    
-
-    if !request_parsing::could_become_store_request(message)?
-            && !request_parsing::could_become_load_request(message)? {
-        return Err(TaskError)
-    }
-
-    Ok(())
 }
 
-// Processes single prefix of message that is a STORE request and
-// deletes it from the message.
-async fn process_store_request(message: &mut String, data: &mut TaskData) -> Result<(), TaskError> {
-    let (key, value, rest) = request_parsing::split_store_request(message);
-    *message = rest;
+async fn process_request(request: Request, data: &mut TaskData) -> Result<(), TaskError> {
+    match request {
+        Request::Store(request) => process_store_request(request, data).await,
+        Request::Load(request) => process_load_request(request, data).await
+    }
+}
 
+async fn process_store_request(request: StoreRequest, data: &mut TaskData) -> Result<(), TaskError> {
     match data.db.lock() {
         Ok(mut db) => {
-            db.insert(key, value);
+            db.insert(request.key, request.value);
         },
         Err(_) => return Err(TaskError)
     }
 
-    send_done_response(&mut data.socket).await?;
-
-    Ok(())
+    send_done_response(&mut data.socket).await
 }
 
-// Processes single prefix of message that is a LOAD request and
-// deletes it from the message.
-async fn process_load_request(message: &mut String, data: &mut TaskData) -> Result<(), TaskError> {
-    let (key, rest) = request_parsing::split_load_request(message);
-    *message = rest;
-
-    let mut value = String::from("not_found");
+async fn process_load_request(request: LoadRequest, data: &mut TaskData) -> Result<(), TaskError> {
+    let value;
     match data.db.lock() {
         Ok(db) => {
-            if let Some(val) = db.get(&key) {
-                value = val.clone();
-            }
+            value = db.get(&request.key).map(|val| val.clone());
         },
         Err(_) => return Err(TaskError)
     }
 
-    if value == "not_found" {
-        send_not_found_response(&mut data.socket).await?;
-    } else {
-        send_found_response(&mut data.socket, value).await?;
+    match value {
+        None => send_not_found_response(&mut data.socket).await,
+        Some(value) => send_found_response(&mut data.socket, value).await
     }
-
-    Ok(())
 }
 
 async fn send_done_response(socket: &mut TcpStream) -> Result<(), TaskError> {
