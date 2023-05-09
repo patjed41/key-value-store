@@ -70,16 +70,16 @@ pub fn try_parse_request(message: &mut String) -> Result<Option<Request>, TaskEr
     if is_store_request(message)? {
         let (key, value, rest) = split_store_request(message);
         *message = rest;
-        return Ok(Some(Request::Store(StoreRequest::new(key, value))));
+        Ok(Some(Request::Store(StoreRequest::new(key, value))))
     } else if is_load_request(message)? {
         let (key, rest) = split_load_request(message);
         *message = rest;
-        return Ok(Some(Request::Load(LoadRequest::new(key))));
+        Ok(Some(Request::Load(LoadRequest::new(key))))
     } else if could_become_store_request(message)?
         || could_become_load_request(message)? {
-        return Ok(None);
+        Ok(None)
     } else {
-        return Err(TaskError);
+        Err(TaskError)
     }
 }
 
